@@ -11,9 +11,16 @@ import (
 	"time"
 )
 
+func CleanupImageCount(status *JobStatus)  {
+	// done scanning this page
+	status.ImagesScanned++
+	status.LastActivity = time.Now()
+}
+
 // Download fetches the contents at url and writes them to w.
 func Download(imageUrl string, status *JobStatus) error {
-	
+	defer CleanupImageCount(status)
+
 	if imageUrl == "" {
 		return errors.New("url is empty")
 	}
@@ -45,10 +52,6 @@ func Download(imageUrl string, status *JobStatus) error {
 	defer w.Close()
 
 	_, err = io.Copy(w, resp.Body)
-
-	// done scanning this page
-	status.ImagesScanned++
-	status.LastActivity = time.Now()
 
 	return err
 }

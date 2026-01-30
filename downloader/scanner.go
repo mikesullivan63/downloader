@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"log"
+	"sync"
 	"time"
 	"github.com/mikesullivan63/downloader/messages"
 	"github.com/PuerkitoBio/goquery"
@@ -24,9 +25,10 @@ func Cleanup(status *JobStatus)  {
 }
 
 // Scans page and gets links and images.
-func Scan(event PageDiscovered, pageChannel chan PageDiscovered, imageChannel chan ImageDiscovered, status *JobStatus) error {
+func Scan(event PageDiscovered, enqueue chan<- PageDiscovered, imageChannel chan<- ImageDiscovered, status *JobStatus, wg *sync.WaitGroup) error {
 	fmt.Printf("Scanning page: %+v\n%+v\n", event, status)
 
+	// mark that we're scanning this page
 	defer Cleanup(status)
 
 	if event.URL == "" {
@@ -56,11 +58,13 @@ func Scan(event PageDiscovered, pageChannel chan PageDiscovered, imageChannel ch
 			if exists {
 				pageEvent := PageDiscovered{JobID: event.JobID, Depth: event.Depth + 1, URL: text}
 				status.PagesFound++
-				pageChannel <- pageEvent
+				wg.Add(1)
+				enqueue <- pageEvent
 			}
 		})
 	}
 
+	/*
 	doc.Find("img").Each(func(i int, s *goquery.Selection) {
 		text, exists := s.Attr("src")
 
@@ -70,6 +74,7 @@ func Scan(event PageDiscovered, pageChannel chan PageDiscovered, imageChannel ch
 			imageChannel <- imageEvent
 		}
 	})
+		*/
 
 
 

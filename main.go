@@ -6,6 +6,8 @@ import (
 	"os"
 	"time"
 	"math/rand"
+	"sync"
+	"runtime"
 
 	"github.com/mikesullivan63/downloader/downloader"
 	"github.com/mikesullivan63/downloader/messages"
@@ -16,42 +18,50 @@ type PageDiscovered = messages.PageDiscovered
 type ImageDiscovered = messages.ImageDiscovered
 type JobStatus = messages.JobStatus
 
-func startPageWorker(pageChannel chan PageDiscovered, imageChannel chan ImageDiscovered, status *JobStatus) {
-	// consume events and start a scanner for each
+// New worker-pool implementation (keeps the old malformed functions untouched)
+func startWorkerPool2(enqueue chan PageDiscovered, pageChan chan PageDiscovered, imageChan chan ImageDiscovered, status *JobStatus, wg *sync.WaitGroup, workers int) chan struct{} {
+	forwarderDone := make(chan struct{})
 	go func() {
-		for ev := range pageChannel {
-			// run scanner in its own goroutine so it can publish back to pageChannel
-			ev := ev
-			go func() {
-				if err := downloader.Scan(ev, pageChannel, imageChannel, status); err != nil {
+		for p := range enqueue {
+			wg.Add(1)
+			pageChan <- p
+		}
+		close(pageChan)
+		close(forwarderDone)
+	}()
+
+	for i := 0; i < workers; i++ {
+		go func() {
+			for ev := range pageChan {
+				if err := downloader.Scan(ev, enqueue, imageChan, status, wg); err != nil {
 					fmt.Fprintf(os.Stderr, "scanner error: %v\n", err)
 				}
-			}()
 
-			fmt.Printf("Finished page\n%+v\n", status)
+				fmt.Printf("Finished page: %+v\n%+v\n", ev, status)
 
-			time.Sleep(1 * time.Second)
+				time.Sleep(1 * time.Second)
+
+				wg.Done()
+			}
+		}()
+	}
+
+	return forwarderDone
+}
+
+func startImagePrinter2(imageChan chan ImageDiscovered, done chan struct{}, status *JobStatus) {
+	go func() {
+		for img := range imageChan {
+//			fmt.Printf("found image: %s\n", img.URL)
+			if err := downloader.Download(img.URL, status); err != nil {
+				fmt.Fprintf(os.Stderr, "download image error: %v\n", err)
+			}
 		}
+		close(done)
 	}()
 }
 
-func startImageWorker(imageChannel chan ImageDiscovered, status *JobStatus) {
-	// consume events and start a scanner for each
-	go func() {
-		for ev := range imageChannel {
-			// run scanner in its own goroutine so it can publish back to pageChannel
-			ev := ev
-			go func() {
-				if err := downloader.Download(ev.URL, status); err != nil {
-					fmt.Fprintf(os.Stderr, "scanner error: %v\n", err)
-				}
-			}()
 
-			fmt.Printf("Finished image\n%+v\n", status)
-
-		}
-	}()
-}
 
 func main() {
 	flag.Parse()
@@ -64,26 +74,35 @@ func main() {
 	jobID := rand.Intn(100)
 
 	status := JobStatus{ JobID:jobID, PagesFound: 1, PagesScanned: 0, ImagesFound: 0, ImagesScanned: 0, LastActivity: time.Now() }
+	enqueueChan := make(chan PageDiscovered, 100)
 	pageChannel := make(chan PageDiscovered)
-	imageChannel := make(chan ImageDiscovered)
+	imageChannel := make(chan ImageDiscovered, 100)
 
-	// start workers
-	startPageWorker(pageChannel, imageChannel, &status)
-	// startImageWorker(imageChannel, &status)
+	var wg sync.WaitGroup
+	workers := runtime.NumCPU()
 
-	/*
-	// print found images
-	go func() {
-		for img := range imageChannel {
-			fmt.Printf("found image: %s\n", img.URL)
-		}
-	}()
-		*/
+	forwarderDone := startWorkerPool2(enqueueChan, pageChannel, imageChannel, &status, &wg, workers)
 
-	// seed with initial page
-	pageChannel <- PageDiscovered{JobID: jobID, Depth: 0, URL: url}
+	// ensure the initial seed is counted before waiting
+	wg.Add(1)
 
-	// block forever for now (or until the process is killed)
-	select {}
+	imageDone := make(chan struct{})
+	startImagePrinter2(imageChannel, imageDone, &status)
+
+	// seed with initial page (enqueue increments waitgroup via forwarder)
+	enqueueChan <- PageDiscovered{JobID: jobID, Depth: 0, URL: url}
+
+	// wait for all pages to be processed
+	wg.Wait()
+
+	// no more enqueues, close to let forwarder finish
+	close(enqueueChan)
+	<-forwarderDone
+
+	// close images and wait for the image printer to finish
+	close(imageChannel)
+	<-imageDone
+
+	fmt.Printf("Done. status: %+v\n", status)
 }
 
