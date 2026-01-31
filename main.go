@@ -56,6 +56,8 @@ func startImagePrinter2(imageChan chan ImageDiscovered, done chan struct{}, stat
 			if err := downloader.Download(img.URL, status); err != nil {
 				fmt.Fprintf(os.Stderr, "download image error: %v\n", err)
 			}
+
+			fmt.Printf("Finished image: %+v\n%+v\n", img, status)
 		}
 		close(done)
 	}()
@@ -78,6 +80,8 @@ func main() {
 	pageChannel := make(chan PageDiscovered)
 	imageChannel := make(chan ImageDiscovered, 100)
 
+	// jobCompleted := make(chane int)
+
 	var wg sync.WaitGroup
 	workers := runtime.NumCPU()
 
@@ -94,6 +98,8 @@ func main() {
 
 	// wait for all pages to be processed
 	wg.Wait()
+
+	fmt.Printf("All pages done: %+v\n", status)
 
 	// no more enqueues, close to let forwarder finish
 	close(enqueueChan)

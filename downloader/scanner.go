@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"log"
+	"strings"
 	"sync"
 	"time"
 	"github.com/mikesullivan63/downloader/messages"
@@ -64,19 +65,16 @@ func Scan(event PageDiscovered, enqueue chan<- PageDiscovered, imageChannel chan
 		})
 	}
 
-	/*
 	doc.Find("img").Each(func(i int, s *goquery.Selection) {
 		text, exists := s.Attr("src")
 
-		if exists {
+		if exists && strings.HasPrefix(text, "http") {
+
 			imageEvent := ImageDiscovered{JobID: event.JobID, URL: text}
 			status.ImagesFound++
 			imageChannel <- imageEvent
 		}
 	})
-		*/
-
-
 
 	return nil
 }
