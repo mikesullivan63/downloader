@@ -23,7 +23,6 @@ func startWorkerPool2(enqueue chan PageDiscovered, pageChan chan PageDiscovered,
 	forwarderDone := make(chan struct{})
 	go func() {
 		for p := range enqueue {
-			wg.Add(1)
 			pageChan <- p
 		}
 		close(pageChan)
@@ -53,7 +52,7 @@ func startImagePrinter2(imageChan chan ImageDiscovered, done chan struct{}, stat
 	go func() {
 		for img := range imageChan {
 //			fmt.Printf("found image: %s\n", img.URL)
-			if err := downloader.Download(img.URL, status); err != nil {
+			if err := downloader.DownloadImage(img.URL, status); err != nil {
 				fmt.Fprintf(os.Stderr, "download image error: %v\n", err)
 			}
 

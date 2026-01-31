@@ -18,7 +18,24 @@ func CleanupImageCount(status *JobStatus)  {
 }
 
 // Download fetches the contents at url and writes them to w.
-func Download(imageUrl string, status *JobStatus) error {
+func Download(url string, w io.Writer) error {
+	if url == "" {
+		return errors.New("url is empty")
+	}
+	resp, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return errors.New("non-2xx response: " + resp.Status)
+	}
+	_, err = io.Copy(w, resp.Body)
+	return err
+}
+
+// DownloadImage fetches an image and writes it to disk, updating status.
+func DownloadImage(imageUrl string, status *JobStatus) error {
 	defer CleanupImageCount(status)
 
 	if imageUrl == "" {
@@ -35,23 +52,12 @@ func Download(imageUrl string, status *JobStatus) error {
 
 	var w *os.File
 
-	//trimmed, err := url.Parse(imageUrl)
+	imgPath := fmt.Sprintf("IMAGES/%d", rand.Intn(10000000))
+	w, err = os.Create(imgPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to parse umage url: %v\n", err)
-		os.Exit(1)
+		return err
 	}
-
-//	w, err = os.Create("IMAGES/" + trimmed.Path)
-	imgPath := fmt.Sprintf("IMAGES/%d",rand.Intn(10000000) )
-	w, err = os.Create(imgPath )
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to create output file: %v\n", err)
-		os.Exit(1)
-	}
-
 	defer w.Close()
-
 	_, err = io.Copy(w, resp.Body)
-
 	return err
 }
