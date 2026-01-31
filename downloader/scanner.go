@@ -23,7 +23,7 @@ func Cleanup(status *JobStatus)  {
 	status.PagesScanned++
 	status.LastActivity = time.Now()
 }
-
+ 
 // Scans page and gets links and images.
 func Scan(event PageDiscovered, enqueue chan<- PageDiscovered, imageChannel chan<- ImageDiscovered, status *JobStatus, wg *sync.WaitGroup) error {
 	fmt.Printf("Scanning page: %+v\n%+v\n", event, status)
